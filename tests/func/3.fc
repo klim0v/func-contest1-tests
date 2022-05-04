@@ -40,31 +40,31 @@ int equal_slices (slice a, slice b) asm "SDEQ";
 }
 
 ;; Parse sender address from incoming message
-(slice, int) parse_sender_address (cell in_msg_full) {
+(slice) parse_sender_address (cell in_msg_full) {
   var cs = in_msg_full.begin_parse();
-  var flags = cs~load_uint(4);
+  cs~skip_bits(4); ;; var flags = cs~load_uint(4);
   slice sender_address = cs~load_msg_addr();
-  return (sender_address, flags);
+  return (sender_address);
 }
 
 ;; testable
 () recv_internal (int balance, int msg_value, cell in_msg_full, slice in_msg_body) {
   (slice manager_address, slice memorized_address) = load_data();
-  int op = in_msg_body~load_int(32);
+  int op = in_msg_body~load_uint(32);
   int query_id = in_msg_body~load_uint(64);
   if (op == 1) {
-    (slice sender_address, _) = parse_sender_address(in_msg_full);
+    slice sender_address = parse_sender_address(in_msg_full);
     in_msg_body~load_msg_addr();
     slice new_memorized_address = in_msg_body~load_msg_addr();
-    if equal_slices(manager_address, sender_address) {
-        save_data(manager_address, new_memorized_address);
-    }
+    throw_unless(99, equal_slices(manager_address, sender_address));
+
+    save_data(manager_address, new_memorized_address);
     return ();
   }
   if (op == 2) {
-    (slice sender_address, _) = parse_sender_address(in_msg_full);
+    slice sender_address = parse_sender_address(in_msg_full);
     var msg = begin_cell()
-          .store_uint(0x10, 6)
+          .store_uint(0x18, 6)
           .store_slice(sender_address)
           .store_grams(0)
           .store_uint(0, 1 + 4 + 4 + 64 + 32 + 1 + 1)
