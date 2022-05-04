@@ -52,12 +52,12 @@ int equal_slices (slice a, slice b) asm "SDEQ";
   (slice manager_address, slice memorized_address) = load_data();
   int op = in_msg_body~load_uint(32);
   int query_id = in_msg_body~load_uint(64);
+
   if (op == 1) {
     slice sender_address = parse_sender_address(in_msg_full);
-    in_msg_body~load_msg_addr();
-    slice new_memorized_address = in_msg_body~load_msg_addr();
     throw_unless(99, equal_slices(manager_address, sender_address));
 
+    slice new_memorized_address = in_msg_body~load_msg_addr();
     save_data(manager_address, new_memorized_address);
     return ();
   }
