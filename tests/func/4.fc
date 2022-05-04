@@ -38,12 +38,12 @@ TASK 4 - HASHMAP STORAGE.
     }
 }
 
-() save_data(cell data_dict, cell valid_until_dict) {
+() save_data(cell data_dict, cell valid_until_dict) impure {
     set_data(begin_cell().store_dict(data_dict).store_dict(valid_until_dict).end_cell());
 }
 
 ;; testable
-() recv_internal(int balance, int msg_value, cell in_msg_full, slice in_msg_body) {
+() recv_internal(int balance, int msg_value, cell in_msg_full, slice in_msg_body) impure {
     int op = in_msg_body~load_uint(32);
     int query_id = in_msg_body~load_uint(64);
 
@@ -55,11 +55,11 @@ TASK 4 - HASHMAP STORAGE.
 
     if (op == 1) { ;; add new entry
       int key = in_msg_body~load_uint(256);
-      int valid_until = in_msg_body~load_uint(64);
+      slice valid_until_sl = in_msg_body~load_bits(64);
       slice value = in_msg_body;
 
       data_dict~udict_set(256, key, value);
-      valid_until_dict~udict_set_ref(256, key, begin_cell().store_uint(valid_until, 64).end_cell());
+      valid_until_dict~udict_set(256, key, valid_until_sl);
     }
 
     if (op == 2) { ;; remove outdated
@@ -67,7 +67,8 @@ TASK 4 - HASHMAP STORAGE.
          do {
            (key, slice cs, int f) = valid_until_dict.udict_get_next?(256, key);
            if (f) {
-              if (cs~load_uint(64) < now()) { ;; int valid_until = cs~load_uint(64);
+              int valid_until = cs~load_uint(64);
+              if (valid_until < now()) {
                 valid_until_dict~udict_delete?(256, key);
                 data_dict~udict_delete?(256, key);
               }
@@ -81,12 +82,13 @@ TASK 4 - HASHMAP STORAGE.
 ;; testable (but not gas-measured)
 (int, slice) get_key(int key) method_id {
     (cell data_dict, cell valid_until_dict) = load_data();
-    (slice valid_until, var found?) = valid_until_dict.udict_get?(key, 256);
+    (slice valid_until, var found?) = valid_until_dict.udict_get?(256, key);
     ifnot (found?) {
+        throw(911);
         ;; config proposal not found
-        return (-1, null());
+        ;; return (-1, null());
     }
-    (slice value, var found?)  = data_dict.udict_get?(key, 256);
+    (slice value, var found?)  = data_dict.udict_get?(256, key);
     ifnot (found?) {
         throw(911);
     }

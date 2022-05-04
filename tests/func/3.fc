@@ -35,7 +35,7 @@ int equal_slices (slice a, slice b) asm "SDEQ";
   return (ds~load_msg_addr(), ds~load_msg_addr());
 }
 
-() save_data (slice manager_address, slice memorized_address) {
+() save_data (slice manager_address, slice memorized_address) impure {
   set_data(begin_cell().store_slice(manager_address).store_slice(memorized_address).end_cell());
 }
 
@@ -48,7 +48,7 @@ int equal_slices (slice a, slice b) asm "SDEQ";
 }
 
 ;; testable
-() recv_internal (int balance, int msg_value, cell in_msg_full, slice in_msg_body) {
+() recv_internal (int balance, int msg_value, cell in_msg_full, slice in_msg_body) impure {
   (slice manager_address, slice memorized_address) = load_data();
   int op = in_msg_body~load_uint(32);
   int query_id = in_msg_body~load_uint(64);
