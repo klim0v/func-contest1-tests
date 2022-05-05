@@ -39,21 +39,23 @@ cell pack_data(int public_key1, int public_key2) method_id {
   pks~udict_set(256, public_key2, begin_cell().end_cell().begin_parse());
   return begin_cell()
     .store_dict(pks)
-    .store_ref(begin_cell().end_cell())
+    .store_dict(null())
     .end_cell();
 }
-
+(cell, cell) try_init() inline_ref {
+    return (null(), null());
+}
 (cell, cell) load_data() {
     slice ds = get_data().begin_parse();
     if (ds.slice_bits() == 0) {
-        return (null(), null());
+        return try_init();
     } else {
-        return (ds~load_dict(), ds~load_ref());
+        return (ds~load_dict(), ds~load_dict());
     }
 }
 
 () save_data(cell pks, cell pending_query) impure {
-    set_data(begin_cell().store_dict(pks).store_ref(pending_query).end_cell());
+    set_data(begin_cell().store_dict(pks).store_dict(pending_query).end_cell());
 }
 
 () recv_internal(slice in_msg) impure {
@@ -62,11 +64,9 @@ cell pack_data(int public_key1, int public_key2) method_id {
 
 ;; testable
 () recv_external (slice in_msg_body) impure {
-
     var pk = in_msg_body~load_uint(256);
-
-    ;; Check root signature
     slice signature = in_msg_body~load_bits(512);
+
     var request = in_msg_body~load_ref().begin_parse();
     var hash = slice_hash(request);
     throw_unless(32, check_signature(hash, signature, pk));
@@ -75,34 +75,33 @@ cell pack_data(int public_key1, int public_key2) method_id {
     throw_if(35, valid_until <= now());
     throw_if(40, valid_until > now() + 60);
 
-    var mode = request~load_uint(8);
-    var msg = request~load_ref();
-
-    var hash_msg_to_send = slice_hash(msg.begin_parse());
-
     var (public_keys, pending_query) = load_data();
     (_, var found?) = public_keys.udict_get?(256, pk);
     throw_unless(31, found?);
 
-    var pq = pending_query.begin_parse();
-    if pq.slice_bits() == 0 {
-        save_data(public_keys, begin_cell().store_uint(valid_until, 32).store_uint(hash_msg_to_send, 256).store_uint(pk, 256).end_cell());
+    (var last_pending_query, var found?) = pending_query.udict_get?(256, hash);
+
+    accept_message();
+
+    ifnot found? {
+        pending_query~udict_set(256, hash, begin_cell().store_uint(valid_until, 32).store_uint(pk, 256).end_cell().begin_parse());
+        save_data(public_keys, pending_query);
         return ();
     }
 
-	var pending_query_valid_until = pq~load_uint(32);
-	throw_if(36, pending_query_valid_until <= now());
+    var last_pending_query_valid_until = last_pending_query~load_uint(32);
+;;     throw_if(36, last_pending_query_valid_until <= now());
 
-	var pending_query_hash = pq~load_uint(256);
-	if hash_msg_to_send != pending_query_hash {
-        throw(37);
-    }
-
-    var pending_query_signer = pq~load_uint(256);
-    if pending_query_signer == pk {
+    var last_pk = last_pending_query~load_uint(256);
+    if last_pk == pk {
         throw(38);
     }
 
-    save_data(public_keys, begin_cell().end_cell());
+;;     pending_query~udict_delete?(256, hash);
+    save_data(public_keys, pending_query);
+
+    var mode = request~load_uint(8);
+    var msg = request~load_ref();
+
     send_raw_message(msg, mode);
 }
