@@ -40,22 +40,23 @@ cell pack_data(int public_key1, int public_key2) method_id {
   return begin_cell()
     .store_dict(pks)
     .store_dict(null())
+    .store_dict(null())
     .end_cell();
 }
-(cell, cell) try_init() inline_ref {
-    return (null(), null());
+(cell, cell, cell) try_init() inline_ref {
+    return (null(), null(), null());
 }
-(cell, cell) load_data() {
+(cell, cell, cell) load_data() {
     slice ds = get_data().begin_parse();
     if (ds.slice_bits() == 0) {
         return try_init();
     } else {
-        return (ds~load_dict(), ds~load_dict());
+        return (ds~load_dict(), ds~load_dict(), ds~load_dict());
     }
 }
 
-() save_data(cell pks, cell pending_query) impure {
-    set_data(begin_cell().store_dict(pks).store_dict(pending_query).end_cell());
+() save_data(cell pks, cell pending_query, compleated) impure {
+    set_data(begin_cell().store_dict(pks).store_dict(pending_query).store_dict(compleated).end_cell());
 }
 
 () recv_internal(slice in_msg) impure {
@@ -75,7 +76,7 @@ cell pack_data(int public_key1, int public_key2) method_id {
     throw_if(35, valid_until <= now());
     throw_if(40, valid_until > now() + 60);
 
-    var (public_keys, pending_query) = load_data();
+    var (public_keys, pending_query, compleated) = load_data();
     (_, var found?) = public_keys.udict_get?(256, pk);
     throw_unless(31, found?);
 
@@ -84,8 +85,13 @@ cell pack_data(int public_key1, int public_key2) method_id {
     accept_message();
 
     ifnot found? {
+        (_, var found?) = compleated.udict_get?(256, hash);
+        if found? {
+            throw(501);
+        }
+
         pending_query~udict_set(256, hash, begin_cell().store_uint(valid_until, 32).store_uint(pk, 256).end_cell().begin_parse());
-        save_data(public_keys, pending_query);
+        save_data(public_keys, pending_query, compleated);
         return ();
     }
 
@@ -97,8 +103,9 @@ cell pack_data(int public_key1, int public_key2) method_id {
         throw(38);
     }
 
-;;     pending_query~udict_delete?(256, hash);
-    save_data(public_keys, pending_query);
+    compleated.udict_set(256, hash, null().begin_parse());
+    pending_query~udict_delete?(256, hash);
+    save_data(public_keys, pending_query, compleated);
 
     var mode = request~load_uint(8);
     var msg = request~load_ref();
