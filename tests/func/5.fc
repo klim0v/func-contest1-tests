@@ -34,22 +34,25 @@ int equal_slices (slice a, slice b) asm "SDEQ";
 
 ;; testable
 cell pack_data(int public_key1, int public_key2) method_id {
-  ;; Fill in
-  var pks = begin_cell().end_cell();
-  pks~udict_set(256, public_key1, null());
-  pks~udict_set(256, public_key2, null());
+  var pks = null();
+  pks~udict_set(256, public_key1, begin_cell().end_cell().begin_parse());
+  pks~udict_set(256, public_key2, begin_cell().end_cell().begin_parse());
   return begin_cell()
     .store_dict(pks)
-    .store_ref(null())
+    .store_ref(begin_cell().end_cell())
     .end_cell();
 }
 
 (cell, cell) load_data() {
     slice ds = get_data().begin_parse();
-    return (ds~load_dict(), ds~load_ref());
+    if (ds.slice_bits() == 0) {
+        return (null(), null());
+    } else {
+        return (ds~load_dict(), ds~load_ref());
+    }
 }
 
-() save_data(cell pks, cell pending_query) {
+() save_data(cell pks, cell pending_query) impure {
     set_data(begin_cell().store_dict(pks).store_ref(pending_query).end_cell());
 }
 
@@ -59,37 +62,34 @@ cell pack_data(int public_key1, int public_key2) method_id {
 
 ;; testable
 () recv_external (slice in_msg_body) impure {
+
     var pk = in_msg_body~load_uint(256);
 
-    var (public_keys, pending_query) = load_data();
-
-    (_, var found?) = public_keys.udict_get?(pk, 256);
-    throw_unless(31, found?);
-
     ;; Check root signature
-    slice root_signature = in_msg_body~load_bits(512);
-    int root_hash = slice_hash(in_msg_body);
-    int root_i = in_msg_body~load_uint(8);
-	cell signatures = in_msg_body~load_dict();
-	var hash = slice_hash(in_msg_body);
-	throw_unless(32, check_signature(root_hash, root_signature, pk));
+    slice signature = in_msg_body~load_bits(512);
+    var request = in_msg_body~load_ref().begin_parse();
+    var hash = slice_hash(request);
+    throw_unless(32, check_signature(hash, signature, pk));
 
-	var request = in_msg_body~load_ref().begin_parse();
+    var valid_until = request~load_uint(32);
+    throw_if(35, valid_until <= now());
+    throw_if(40, valid_until > now() + 60);
 
-	var valid_until = request~load_uint(32);
-	throw_if(35, valid_until <= now());
+    var mode = request~load_uint(8);
+    var msg = request~load_ref();
 
-	var mode = request~load_uint(8);
-	var msg = request~load_ref();
-	var msg_to_send = msg.begin_parse();
+    var hash_msg_to_send = slice_hash(msg.begin_parse());
 
-    var hash_msg_to_send = slice_hash(msg_to_send);
+    var (public_keys, pending_query) = load_data();
+    (_, var found?) = public_keys.udict_get?(256, pk);
+    throw_unless(31, found?);
 
     var pq = pending_query.begin_parse();
     if pq.slice_bits() == 0 {
         save_data(public_keys, begin_cell().store_uint(valid_until, 32).store_uint(hash_msg_to_send, 256).store_uint(pk, 256).end_cell());
         return ();
     }
+
 	var pending_query_valid_until = pq~load_uint(32);
 	throw_if(36, pending_query_valid_until <= now());
 
@@ -103,14 +103,6 @@ cell pack_data(int public_key1, int public_key2) method_id {
         throw(38);
     }
 
-
-    save_data(public_keys, null());
+    save_data(public_keys, begin_cell().end_cell());
     send_raw_message(msg, mode);
-    commit();
-
-;;     todo
-;;     set_gas_limit(100000);
-;;
-
-	accept_message();
 }
