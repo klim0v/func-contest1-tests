@@ -82,26 +82,27 @@ cell pack_data(int public_key1, int public_key2) method_id {
 
     (var last_pending_query, var found?) = pending_query.udict_get?(256, hash);
 
-    accept_message();
-
     ifnot found? {
         (_, var found?) = compleated.udict_get?(256, hash);
         if found? {
             throw(501);
         }
 
+        accept_message();
         pending_query~udict_set(256, hash, begin_cell().store_uint(valid_until, 32).store_uint(pk, 256).end_cell().begin_parse());
         save_data(public_keys, pending_query, compleated);
         return ();
     }
 
     var last_pending_query_valid_until = last_pending_query~load_uint(32);
-;;     throw_if(36, last_pending_query_valid_until <= now());
+    throw_if(36, last_pending_query_valid_until <= now());
 
     var last_pk = last_pending_query~load_uint(256);
     if last_pk == pk {
         throw(38);
     }
+
+    accept_message();
 
     compleated.udict_set(256, hash, null().begin_parse());
     pending_query~udict_delete?(256, hash);
