@@ -43,19 +43,13 @@ cell pack_data(int public_key1, int public_key2) method_id {
     .store_dict(null())
     .end_cell();
 }
-(cell, cell, cell) try_init() inline_ref {
-    return (null(), null(), null());
-}
+
 (cell, cell, cell) load_data() {
     slice ds = get_data().begin_parse();
-    if (ds.slice_bits() == 0) {
-        return try_init();
-    } else {
-        return (ds~load_dict(), ds~load_dict(), ds~load_dict());
-    }
+    return (ds~load_dict(), ds~load_dict(), ds~load_dict());
 }
 
-() save_data(cell pks, cell pending_query, compleated) impure {
+() save_data(cell pks, cell pending_query, cell compleated) impure {
     set_data(begin_cell().store_dict(pks).store_dict(pending_query).store_dict(compleated).end_cell());
 }
 
@@ -80,22 +74,16 @@ cell pack_data(int public_key1, int public_key2) method_id {
     (_, var found?) = public_keys.udict_get?(256, pk);
     throw_unless(31, found?);
 
-    (var last_pending_query, var found?) = pending_query.udict_get?(256, hash);
+    (_, var found_compleated) = compleated.udict_get?(256, hash);
+    throw_if(55, found_compleated);
 
-    ifnot found? {
-        (_, var found?) = compleated.udict_get?(256, hash);
-        if found? {
-            throw(501);
-        }
-
+    (var last_pending_query, var pending_query_found?) = pending_query.udict_get?(256, hash);
+    ifnot pending_query_found? {
         accept_message();
-        pending_query~udict_set(256, hash, begin_cell().store_uint(valid_until, 32).store_uint(pk, 256).end_cell().begin_parse());
+        pending_query~udict_set(256, hash, begin_cell().store_uint(pk, 256).end_cell().begin_parse());
         save_data(public_keys, pending_query, compleated);
         return ();
     }
-
-    var last_pending_query_valid_until = last_pending_query~load_uint(32);
-    throw_if(36, last_pending_query_valid_until <= now());
 
     var last_pk = last_pending_query~load_uint(256);
     if last_pk == pk {
@@ -104,8 +92,9 @@ cell pack_data(int public_key1, int public_key2) method_id {
 
     accept_message();
 
-    compleated.udict_set(256, hash, null().begin_parse());
+    compleated~udict_set(256, hash, begin_cell().end_cell().begin_parse());
     pending_query~udict_delete?(256, hash);
+
     save_data(public_keys, pending_query, compleated);
 
     var mode = request~load_uint(8);
